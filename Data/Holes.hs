@@ -1,6 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE Rank2Types #-}
@@ -11,6 +13,7 @@ module Data.Holes
 
 import           Control.Applicative
 import           Control.Lens
+import           Control.Lens.Indexed
 import           Data.Bits
 import           Data.Data
 import           Data.Traversable
@@ -27,12 +30,8 @@ type H4  = Holes H2 H2
 type H8  = Holes H4 H4
 type H16 = Holes H8 H8
 
--------------------------------
--- HOLY
--------------------------------
-
-class (Traversable a) => Holy a where
-    type WrapWith w a :: * -> *
+class Wrappable (a :: * -> *) where
+    type Wrap (w :: (* -> *) -> * -> *) a :: * -> *
 
 -------------------------------
 -- HOLE
@@ -50,15 +49,14 @@ instance Foldable Hole where
 instance Traversable Hole where
     traverse f (Hole h) = Hole <$> f h
 
-instance Each (Hole h) (Hole h') h h' where
-   each = traverse
-
 type instance Index (Hole h) = Int
 type instance IxValue (Hole h) = h
 instance Ixed (Hole h) where
+    ix 0 f (Hole h) = Hole <$> f h
+    ix _ _ hole = pure hole
 
--- instance Holy Hole where
---     type WrapWith w Hole = w Hole
+instance Wrappable Hole where
+    type Wrap w Hole = w Hole
 
 -------------------------------
 -- HOLES
@@ -67,51 +65,54 @@ instance Ixed (Hole h) where
 data Holes a b c = Holes (a c) (b c)
   deriving (Eq, Ord, Bounded, Read, Show, Ix)
 
-instance (Holy a, Holy b) => Functor (Holes a b) where
-    fmap = fmapDefault
+instance (Functor a, Functor b) => Functor (Holes a b) where
+    fmap f (Holes a b) = Holes (fmap f a) (fmap f b)
 
-instance (Holy a, Holy b) => Foldable (Holes a b) where
-    foldMap = foldMapDefault
+instance (Foldable a, Foldable b) => Foldable (Holes a b) where
+    foldMap f (Holes a b) = foldMap f a <> foldMap f b
 
-instance (Holy a, Holy b) => Traversable (Holes a b) where
+instance (Traversable a, Traversable b) => Traversable (Holes a b) where
     traverse f (Holes a b) = Holes <$> traverse f a <*> traverse f b
-
-instance (Holy a, Holy b) => Each (Holes a b h) (Holes a b h') h h' where
-    each = traverse
 
 type instance Index (Holes a b h) = Int
 type instance IxValue (Holes a b h) = h
-instance Ixed (Holes a b h) where
+instance ( Index (a h) ~ Int
+         , Index (b h) ~ Int
+         , IxValue (a h) ~ h
+         , IxValue (b h) ~ h
+         , Ixed (a h)
+         , Ixed (b h)
+         , Traversable a
+         , Traversable b
+         ) => Ixed (Holes a b h) where
+    ix i f (Holes a b) =
+        if i < holes
+        then Holes <$> ix i f a <*> pure b
+        else Holes a <$> ix (i - holes) f b
+      where holes = countHoles a
 
--- instance (Holy a, Holy b) => Holy (Holes a b)  where
---     type WrapWith w (Holes a b) = Holes (w a) (w b)
+instance (Wrappable a, Wrappable b) => Wrappable (Holes a b)  where
+    type Wrap w (Holes a b) = Holes (Wrap w a) (Wrap w b)
 
 -------------------------------
 -- GENERAL
 -------------------------------
 
-countHoles :: (Holy a, Num b) => a h -> b
-countHoles = sumOf traverse . fmap (const 1)
+countHoles :: (Traversable a, Num b) => a h -> b
+countHoles = sumOf traverse . (1 <$)
 
--- flatten :: (Holy a, Holy b, Holy c) => Holes a b c -> Holes _ _ _
+-------------------------------
+-- WRAPPERS
+-------------------------------
 
+type W1  = Wrap AsBigWord H1
+type W2  = Wrap AsBigWord H2
+type W8  = Wrap AsBigWord H8
+type W16 = Wrap AsBigWord H16
 
--- ========================================================================
--- ========================================================================
--- ========================================================================
+newtype AsBigWord (a :: (* -> *)) h = AsBigWord { getBigWord :: (a h) }
+  deriving ( Eq, Ord, Bounded, Read, Show, Ix -- Normal
+           , Enum, Real, Num, Bits, Integral, FiniteBits -- Generalized
+           )
 
-class ( Bounded w
-      , Enum w
-      , Eq w
-      , Integral w
-      , Num w
-      , Ord w
-      , Read w
-      , Real w
-      , Show w
-      , Ix w
-      , FiniteBits w
-      ) => Wordy w where
-
-newtype AWord a w = AWord { getAWord :: a w }
-
+instance 
