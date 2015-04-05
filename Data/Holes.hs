@@ -1,11 +1,7 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE Rank2Types #-}
 
 module Data.Holes
     (
@@ -24,21 +20,17 @@ import           Data.Ratio
 import           Data.Word (Word8)
 import           GHC.Enum
 
-type H1  = Hole
-type H2  = Holes H1 H1
-type H4  = Holes H2 H2
-type H8  = Holes H4 H4
-type H16 = Holes H8 H8
+newtype Hole h = Hole { inside :: h }
+  deriving ( Eq, Ord, Bounded, Read, Show, Ix -- Normal
+           , Enum, Real, Num, Bits, Integral, FiniteBits -- Generalized
+           )
 
-class Wrappable (a :: * -> *) where
-    type Wrap (w :: (* -> *) -> * -> *) a :: * -> *
+data Holes a b c = Holes (a c) (b c)
+  deriving (Eq, Ord, Bounded, Read, Show, Ix)
 
 -------------------------------
 -- HOLE
 -------------------------------
-
-newtype Hole h = Hole { inside :: h }
-  deriving (Eq, Ord, Bounded, Read, Show, Ix)
 
 instance Functor Hole where
     fmap = fmapDefault
@@ -55,15 +47,9 @@ instance Ixed (Hole h) where
     ix 0 f (Hole h) = Hole <$> f h
     ix _ _ hole = pure hole
 
-instance Wrappable Hole where
-    type Wrap w Hole = w Hole
-
 -------------------------------
 -- HOLES
 -------------------------------
-
-data Holes a b c = Holes (a c) (b c)
-  deriving (Eq, Ord, Bounded, Read, Show, Ix)
 
 instance (Functor a, Functor b) => Functor (Holes a b) where
     fmap f (Holes a b) = Holes (fmap f a) (fmap f b)
@@ -91,9 +77,6 @@ instance ( Index (a h) ~ Int
         else Holes a <$> ix (i - holes) f b
       where holes = countHoles a
 
-instance (Wrappable a, Wrappable b) => Wrappable (Holes a b)  where
-    type Wrap w (Holes a b) = Holes (Wrap w a) (Wrap w b)
-
 -------------------------------
 -- GENERAL
 -------------------------------
@@ -102,17 +85,42 @@ countHoles :: (Traversable a, Num b) => a h -> b
 countHoles = sumOf traverse . (1 <$)
 
 -------------------------------
--- WRAPPERS
+-- WRAPPABLE
 -------------------------------
 
-type W1  = Wrap AsBigWord H1
-type W2  = Wrap AsBigWord H2
-type W8  = Wrap AsBigWord H8
-type W16 = Wrap AsBigWord H16
+class Wrappable (a :: * -> *) where
+    type Wrap (w :: (* -> *) -> * -> *) a :: * -> *
+
+instance (Wrappable a, Wrappable b) => Wrappable (Holes a b)  where
+    type Wrap w (Holes a b) = Holes (Wrap w a) (Wrap w b)
+
+instance Wrappable Hole where
+    type Wrap w Hole = w Hole
+
+-------------------------------
+-- BIGWORD
+-------------------------------
 
 newtype AsBigWord (a :: (* -> *)) h = AsBigWord { getBigWord :: (a h) }
   deriving ( Eq, Ord, Bounded, Read, Show, Ix -- Normal
            , Enum, Real, Num, Bits, Integral, FiniteBits -- Generalized
            )
 
-instance 
+instance (Num (a h), Num (b h)) => Num (Holes a b h) where
+    (Holes a b) + (Holes c d) = 
+
+-------------------------------
+-- SYNONYMS
+-------------------------------
+
+type H1  = Hole
+type H2  = Holes H1 H1
+type H4  = Holes H2 H2
+type H8  = Holes H4 H4
+type H16 = Holes H8 H8
+
+type W1  = Wrap AsBigWord H1
+type W2  = Wrap AsBigWord H2
+type W8  = Wrap AsBigWord H8
+type W16 = Wrap AsBigWord H16
+
