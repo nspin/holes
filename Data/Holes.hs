@@ -1,32 +1,20 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Data.Holes
-    (
+    ( Hole(..)
+    , Holes(..)
     ) where
 
-import           Control.Applicative
-import           Control.Lens
-import           Control.Lens.Indexed
-import           Data.Bits
-import           Data.Data
+import           Control.Lens hiding (holes)
 import           Data.Traversable
-import           Data.Ix
-import           Data.List
 import           Data.Monoid
-import           Data.Ratio
-import           Data.Word (Word8)
-import           GHC.Enum
 
 newtype Hole h = Hole { inside :: h }
-  deriving ( Eq, Ord, Bounded, Read, Show, Ix -- Normal
-           , Enum, Real, Num, Bits, Integral, FiniteBits -- Generalized
-           )
+  deriving (Read, Show)
 
 data Holes a b c = Holes (a c) (b c)
-  deriving (Eq, Ord, Bounded, Read, Show, Ix)
+  deriving (Read, Show)
 
 -------------------------------
 -- HOLE
@@ -72,42 +60,17 @@ instance ( Index (a h) ~ Int
          , Traversable b
          ) => Ixed (Holes a b h) where
     ix i f (Holes a b) =
-        if i < holes
+        if i < h
         then Holes <$> ix i f a <*> pure b
-        else Holes a <$> ix (i - holes) f b
-      where holes = countHoles a
+        else Holes a <$> ix (i - h) f b
+      where h = holes a
 
 -------------------------------
--- GENERAL
+-- UTIL
 -------------------------------
 
-countHoles :: (Traversable a, Num b) => a h -> b
-countHoles = sumOf traverse . (1 <$)
-
--------------------------------
--- WRAPPABLE
--------------------------------
-
-class Wrappable (a :: * -> *) where
-    type Wrap (w :: (* -> *) -> * -> *) a :: * -> *
-
-instance (Wrappable a, Wrappable b) => Wrappable (Holes a b)  where
-    type Wrap w (Holes a b) = Holes (Wrap w a) (Wrap w b)
-
-instance Wrappable Hole where
-    type Wrap w Hole = w Hole
-
--------------------------------
--- BIGWORD
--------------------------------
-
-newtype AsBigWord (a :: (* -> *)) h = AsBigWord { getBigWord :: (a h) }
-  deriving ( Eq, Ord, Bounded, Read, Show, Ix -- Normal
-           , Enum, Real, Num, Bits, Integral, FiniteBits -- Generalized
-           )
-
-instance (Num (a h), Num (b h)) => Num (Holes a b h) where
-    (Holes a b) + (Holes c d) = 
+holes :: (Traversable a, Num b) => a h -> b
+holes = sumOf traverse . (1 <$)
 
 -------------------------------
 -- SYNONYMS
@@ -118,9 +81,4 @@ type H2  = Holes H1 H1
 type H4  = Holes H2 H2
 type H8  = Holes H4 H4
 type H16 = Holes H8 H8
-
-type W1  = Wrap AsBigWord H1
-type W2  = Wrap AsBigWord H2
-type W8  = Wrap AsBigWord H8
-type W16 = Wrap AsBigWord H16
 

@@ -17,8 +17,15 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Data.Holes
+                       Data.Holes.Words
+                       Data.Holes.Wrapped
   -- other-modules:       
-  other-extensions:    ScopedTypeVariables, MultiParamTypeClasses, FlexibleInstances, TypeFamilies, MultiWayIf, Rank2Types
+  other-extensions:    ScopedTypeVariables,
+                       MultiParamTypeClasses,
+                       FlexibleInstances,
+                       TypeFamilies,
+                       MultiWayIf,
+                       Rank2Types
   build-depends:       base >=4.8 && <4.9,
                        lens
   -- hs-source-dirs:      
