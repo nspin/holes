@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -9,6 +10,8 @@ module Data.Holes
 import           Control.Lens hiding (holes)
 import           Data.Traversable
 import           Data.Monoid
+import           Data.Ix
+import           Data.Bits
 
 newtype Hole h = Hole { inside :: h }
   deriving (Read, Show)

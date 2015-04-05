@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -12,16 +13,18 @@ import Control.Lens
 import Data.Bits
 import Data.Holes
 import Data.Ix
+import Data.Monoid
 
-deriving instance Bits       h => Bits       (Hole h)
-deriving instance Bounded    h => Bounded    (Hole h)
 deriving instance Enum       h => Enum       (Hole h)
 deriving instance Eq         h => Eq         (Hole h)
+deriving instance Ix         h => Ix         (Hole h)
+deriving instance Ord        h => Ord        (Hole h)
+deriving instance Bounded    h => Bounded    (Hole h)
+
+deriving instance Bits       h => Bits       (Hole h)
 deriving instance FiniteBits h => FiniteBits (Hole h)
 deriving instance Integral   h => Integral   (Hole h)
-deriving instance Ix         h => Ix         (Hole h)
 deriving instance Num        h => Num        (Hole h)
-deriving instance Ord        h => Ord        (Hole h)
 deriving instance Real       h => Real       (Hole h)
 
 deriving instance (Bounded (a h), Bounded (b h)) => Bounded (Holes a b h)
@@ -34,16 +37,22 @@ deriving instance (Ord     (a h), Ord     (b h)) => Ord     (Holes a b h)
 --          , Bits (a h), Bits (b h)
 --          ) => Num (Holes a b h)
 
-instance ( Index (a h) ~ Int,
-           Index (b h) ~ Int,
-           Ixed (a h),
-           Ixed (b h),
-           IxValue (a h) ~ h,
-           IxValue (b h) ~ h,
-          FiniteBits (a h), FiniteBits (b h),
-          Bits (a h), Bits (b h),
-          Traversable a, Traversable b,
-          Bits h
+instance ( Index (a h) ~ Int
+         , Index (b h) ~ Int
+         , Ixed (a h)
+         , Ixed (b h)
+         , IxValue (a h) ~ h
+         , IxValue (b h) ~ h
+         , Bounded (a h)
+         , Bounded (b h)
+         , Bits h
+         , Bits (a h)
+         , Bits (b h)
+         , FiniteBits h
+         , FiniteBits (a h)
+         , FiniteBits (b h)
+         , Traversable a
+         , Traversable b
          ) => Bits (Holes a b h) where
     (Holes a b) .&. (Holes c d) = Holes (a .&. c) (b .&. d)
     (Holes a b) .|. (Holes c d) = Holes (a .|. c) (b .|. d)
@@ -54,31 +63,120 @@ instance ( Index (a h) ~ Int,
     bitSize = finiteBitSize
     bitSizeMaybe = Just . finiteBitSize
     isSigned _ = False
-    testBit a i = testBit (a ^. ix (quot i 8)) i
+    testBit a i = maybe False (flip testBit i) (a ^? ix (quot i 8))
     bit i = minBound & ix q .~ bit r
       where (q, r) = quotRem i 8
     popCount (Holes a b) = popCount a + popCount b
 
-instance (Traversable a, Traversable b, FiniteBits h) => FiniteBits (Holes a b h) where
+instance ( Eq (a h)
+         , Eq (b h)
+         , Index (a h) ~ Int
+         , Index (b h) ~ Int
+         , Ixed (a h)
+         , Ixed (b h)
+         , IxValue (a h) ~ h
+         , IxValue (b h) ~ h
+         , FiniteBits (a h)
+         , FiniteBits (b h)
+         , Bits (a h)
+         , Bits (b h)
+         , Traversable a
+         , Traversable b
+         , Bounded (a h)
+         , Bounded (b h)
+         , Bits h
+         , FiniteBits h
+         ) => FiniteBits (Holes a b h) where
     finiteBitSize = sumOf traverse . fmap finiteBitSize
 
--- instance (IsHoles a, IsHoles b) => Num (Holes a b) where
---     (Holes a b) + (Holes c d) = Holes e f where
---         e = a + c
---         f = b + d + if e < a then 1 else 0
---     (Holes a b) * (Holes c d) = undefined
---     negate = (+ 1) . complement
---     abs = id
---     signum 0 = 0
---     signum _ = 1
---     fromInteger z = Holes (fromInteger r) (fromInteger q) where
---         (q, r) = quotRem z (toInteger (maxBound :: a))
+instance ( Eq (a h)
+         , Eq (b h)
+         , Index (a h) ~ Int
+         , Index (b h) ~ Int
+         , Ixed (a h)
+         , Ixed (b h)
+         , IxValue (a h) ~ h
+         , IxValue (b h) ~ h
+         , FiniteBits (a h)
+         , FiniteBits (b h)
+         , Bits (a h)
+         , Bits (b h)
+         , Traversable a
+         , Traversable b
+         , Bounded (a h)
+         , Bounded (b h)
+         , Bits h
+         , FiniteBits h
+         , Num (a h)
+         , Num (b h)
+         , Integral (a h)
+         ) => Num (Holes a b h) where
+    (Holes a b) + (Holes c d) = Holes e f where
+        e = a + c
+        f = b + d + if e < a then 1 else 0
+    (Holes a b) * (Holes c d) = undefined
+    negate = (+ 1) . complement
+    abs = id
+    signum 0 = 0
+    signum _ = 1
+    fromInteger z = Holes (fromInteger r) (fromInteger q) where
+        (q, r) = quotRem z (toInteger (maxBound :: a h))
 
--- instance (IsHoles a, IsHoles b) => Integral (Holes a b) where
---     toInteger (Holes a b) = toInteger a + toInteger b * (256 ^ lengthOf octets a)
---     quotRem (Holes a b) (Holes c d) = undefined
+instance ( Eq (a h)
+         , Eq (b h)
+         , Enum (a h)
+         , Enum (b h)
+         , Index (a h) ~ Int
+         , Index (b h) ~ Int
+         , Ixed (a h)
+         , Ixed (b h)
+         , IxValue (a h) ~ h
+         , IxValue (b h) ~ h
+         , FiniteBits (a h)
+         , FiniteBits (b h)
+         , Bits (a h)
+         , Bits (b h)
+         , Traversable a
+         , Traversable b
+         , Bounded (a h)
+         , Bounded (b h)
+         , Bits h
+         , FiniteBits h
+         , Num (a h)
+         , Num (b h)
+         , Integral (a h)
+         , Integral (b h)
+         ) => Integral (Holes a b h) where
+    toInteger (Holes a b) = toInteger a + toInteger b * (256 ^ lengthOf traverse a)
+    quotRem (Holes a b) (Holes c d) = undefined
 
--- instance (IsHoles a, IsHoles b) => Enum (Holes a b) where
+instance Enum (Holes a b h) where
+
+instance ( Eq (a h)
+         , Eq (b h)
+         , Enum (a h)
+         , Enum (b h)
+         , Index (a h) ~ Int
+         , Index (b h) ~ Int
+         , Ixed (a h)
+         , Ixed (b h)
+         , IxValue (a h) ~ h
+         , IxValue (b h) ~ h
+         , FiniteBits (a h)
+         , FiniteBits (b h)
+         , Bits (a h)
+         , Bits (b h)
+         , Traversable a
+         , Traversable b
+         , Bounded (a h)
+         , Bounded (b h)
+         , Bits h
+         , FiniteBits h
+         , Num (a h)
+         , Num (b h)
+         , Integral (a h)
+         , Integral (b h)
+         ) => Real (Holes a b h) where
 
 --     toEnum n = if i > toInteger (maxBound :: (Holes a b))
 --                then error ("toEnum on " ++ show n ++ ": out of bounds.")
